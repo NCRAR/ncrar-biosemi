@@ -1,3 +1,4 @@
+from pathlib import Path
 from setuptools import find_packages, setup
 
 
@@ -5,17 +6,8 @@ requirements = [
     'ncrar-audio',
     'pyactivetwo',
     'psiexperiment',
-
-    # From history
-    # pandas, numpy scipy matplotlib json_tricks
-
+    'websockets',
 ]
-
-
-extras_require = {
-    'docs': ['sphinx', 'sphinx_rtd_theme', 'pygments-enaml'],
-    'test': ['pytest', 'pytest-benchmark'],
-}
 
 
 # Get version number
@@ -33,11 +25,12 @@ setup(
     author='Brad Buran',
     author_email='info@bradburan.com',
     install_requires=requirements,
-    extras_require=extras_require,
     packages=find_packages(),
     include_package_data=True,
     description='NCRAR biosemi tools',
     entry_points={
-        'console_scripts': [],
+        'console_scripts': [
+            'ncrar-mmn=ncrar_biosemi.main:main_mmn',
+        ],
     },
 )

@@ -1,0 +1,54 @@
+import asyncio
+
+from enaml.stdlib.fields import IntField
+from enaml.widgets.api import (Field, Form, Label, MainWindow, ObjectCombo,
+                               PushButton)
+
+from . import experiments
+
+
+enamldef MMNLauncher(MainWindow):
+
+    title = 'Biosemi MMN Experiment'
+
+    attr config = experiments.ExperimentConfig()
+
+    Form:
+        Label:
+            text = 'Subject ID'
+        Field:
+            text := config.subject_id
+
+        Label:
+            text = 'Note'
+        Field:
+            text := config.note
+
+        Label:
+            text = 'Number of blocks'
+        IntField:
+            minimum = 1
+            value := config.n_blocks
+
+        Label:
+            text = 'Number of targets per block'
+        IntField:
+            minimum = 1
+            value := config.n_targets
+
+        Label:
+            text = 'Number of trials per block'
+        IntField:
+            minimum << config.n_targets * 2
+            value := config.n_trials
+
+        Label:
+            text = 'Experiment to run'
+        ObjectCombo: experiment_combo:
+            items = list(experiments.available_experiments.keys())
+
+        PushButton:
+            text = 'Start experiment'
+            clicked ::
+                cb = experiments.available_experiments[experiment_combo.selected]
+                asyncio.run(cb(config))
