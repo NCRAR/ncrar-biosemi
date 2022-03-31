@@ -2,12 +2,12 @@ import enaml
 from enaml.qt.qt_application import QtApplication
 
 
-def main_mmn():
+def main_nback():
     with enaml.imports():
-        from ncrar_biosemi.main_gui import MMNLauncher
+        from ncrar_biosemi.main_gui import NBackLauncher
 
     app = QtApplication()
-    view = MMNLauncher()
+    view = NBackLauncher()
     view.show()
     app.start()
     app.stop()

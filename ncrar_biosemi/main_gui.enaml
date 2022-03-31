@@ -1,54 +1,162 @@
 import asyncio
 
+from enaml.core.api import Looper
+from enaml.layout.api import grid
 from enaml.stdlib.fields import IntField
-from enaml.widgets.api import (Field, Form, Label, MainWindow, ObjectCombo,
-                               PushButton)
+from enaml.styling import StyleSheet, Style, Setter
+from enaml.widgets.api import (Container, Field, Form, GroupBox, HGroup, Label,
+                               MainWindow, ObjectCombo, PushButton, VGroup)
 
 from . import experiments
 
 
-enamldef MMNLauncher(MainWindow):
+enamldef LabelStyleSheet(StyleSheet):
 
-    title = 'Biosemi MMN Experiment'
+    Style:
+        element = 'Label'
+        style_class = 'stim'
+        Setter:
+            field = 'border'
+            value = '2px solid gray'
+
+    Style:
+        element = 'Label'
+        style_class = 'current'
+        Setter:
+            field = 'border'
+            value = '2px solid black'
+
+    Style:
+        element = 'Label'
+        style_class = 'response'
+        Setter:
+            field = 'background-color'
+            value = 'DarkGray'
+
+    Style:
+        element = 'Label'
+        style_class = 'correct'
+        Setter:
+            field = 'background-color'
+            value = 'LightGreen'
+
+    Style:
+        element = 'Label'
+        style_class = 'incorrect'
+        Setter:
+            field = 'background-color'
+            value = 'LightCoral'
+
+
+enamldef NBackLauncher(MainWindow):
+
+    title = 'Biosemi N-Back Experiment'
 
     attr config = experiments.ExperimentConfig()
 
-    Form:
-        Label:
-            text = 'Subject ID'
-        Field:
-            text := config.subject_id
+    LabelStyleSheet:
+        pass
 
-        Label:
-            text = 'Note'
-        Field:
-            text := config.note
+    VGroup:
+        GroupBox:
+            title = 'Experiment config'
 
-        Label:
-            text = 'Number of blocks'
-        IntField:
-            minimum = 1
-            value := config.n_blocks
+            Form:
+                Label:
+                    text = 'Subject ID'
+                Field:
+                    text := config.subject_id
+                Label:
+                    text = 'Number of targets in block'
+                IntField:
+                    minimum = 1
+                    value := config.n_targets
+                Label:
+                    text = 'Number of trials in block'
+                IntField:
+                    minimum << config.n_targets * 2
+                    value := config.n_trials
+                Label:
+                    text = 'Experiment to run'
+                ObjectCombo: experiment_combo:
+                    items = list(experiments.available_experiments.keys())
+                    to_string = lambda x: f'N-Back {x}'
+                    selected := config.experiment
 
-        Label:
-            text = 'Number of targets per block'
-        IntField:
-            minimum = 1
-            value := config.n_targets
+        GroupBox:
+            title = 'Subject info'
 
-        Label:
-            text = 'Number of trials per block'
-        IntField:
-            minimum << config.n_targets * 2
-            value := config.n_trials
+            Form:
+                Label:
+                    text = 'Experiment'
+                HGroup:
+                    padding = 0
+                    spacing = 0
+                    Label:
+                        text = 'Runs'
+                    Label:
+                        text = 'Targets'
 
-        Label:
-            text = 'Experiment to run'
-        ObjectCombo: experiment_combo:
-            items = list(experiments.available_experiments.keys())
+                Looper:
+                    iterable << config.current_runs.keys()
+                    Label:
+                        text = f'N-Back {loop_item}'
+                    HGroup:
+                        padding = 0
+                        spacing = 0
+                        Label:
+                            text << str(config.current_runs[loop_item])
+                        Label:
+                            text << ', '.join(config.current_targets[loop_item])
 
-        PushButton:
-            text = 'Start experiment'
-            clicked ::
-                cb = experiments.available_experiments[experiment_combo.selected]
-                asyncio.run(cb(config))
+                HGroup:
+                    enabled << bool(config.subject_id)
+                    PushButton:
+                        text = 'Practice run'
+                        clicked ::
+                            config.run(practice=True)
+                    PushButton:
+                        text = 'Test run'
+                        clicked ::
+                            config.run(practice=False)
+
+        Container:
+            layout_constraints => ():
+                n_children = len(children)
+                if n_children == 1:
+                    return []
+                n_cols = 10
+                n_rows = (n_children // n_cols) + 1
+                g = []
+
+                labels = children[:-1]
+                for row in range(n_rows):
+                    lb = row * n_cols
+                    ub = lb + n_cols
+                    g.append(tuple(labels[lb:ub]))
+
+                base_label = labels[0]
+                constraints = [base_label.width == l.width for l in labels[1:]]
+                constraints.append(grid(*g))
+                return constraints
+
+            Looper:
+                iterable << config.experiment_info.current_sequence[:]
+                Label:
+                    text = f'{loop_item.stim}'
+                    align = 'center'
+                    style_class << \
+                        get_style(loop_item, config.experiment_info.current_stim)
+
+
+def get_style(stim, current_stim):
+    styles = ['stim']
+    if stim is current_stim:
+        styles.append('current')
+    if stim.is_target:
+        styles.append('target')
+    if stim.is_response:
+        styles.append('response')
+    if stim.is_correct is not None:
+        styles.append('correct' if stim.is_correct else 'incorrect')
+    return ' '.join(styles)

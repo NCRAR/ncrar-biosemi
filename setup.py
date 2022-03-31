@@ -30,7 +30,7 @@ setup(
     description='NCRAR biosemi tools',
     entry_points={
         'console_scripts': [
-            'ncrar-mmn=ncrar_biosemi.main:main_mmn',
+            'ncrar-nback=ncrar_biosemi.main:main_nback',
         ],
     },
 )
