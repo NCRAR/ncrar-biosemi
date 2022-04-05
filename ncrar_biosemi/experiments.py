@@ -5,12 +5,13 @@ from pathlib import Path
 from threading import Thread
 import time
 
-from atom.api import Atom, Dict, Enum, Int, List, Str, observe, Property, Value
+from atom.api import (Atom, Bool, Dict, Enum, Event, Int, List, Str, observe,
+                      Property, Typed, Value)
 from enaml.application import deferred_call
 import numpy as np
 
-from psiaudio.stim import read_wav
 from ncrar_audio import babyface, cpod
+from psiaudio.stim import read_wav
 
 from .sequence import generate_nback0_sequence, generate_nback_sequence
 from .psi_controller import PSIController
@@ -21,6 +22,9 @@ data_path = Path('c:/ncrar-biosemi/n-back')
 
 
 def load_stim_set(fs):
+    '''
+    Loads set of syllables used for N-Back experiment
+    '''
     stim_path = Path(__file__).parent / 'stim'
     stim = {}
     for filename in stim_path.glob('*.wav'):
@@ -29,19 +33,32 @@ def load_stim_set(fs):
     return stim
 
 
-async def nback(n_back, config, filename, exclude_targets=None, trial_cb=None):
+async def nback(n_back, config, filename, exclude_targets=None):
+    '''
+    Runs the n-back experiment
+    '''
+    # This is a hack to allow sounddevice to work in a new thread. For some
+    # reason the PortAudio bindings to the ASIO drivers (or the ASIO drivers --
+    # who knows) do not allow us to call them in a thread separate from the one
+    # where the library was loaded.
+    import importlib
+    import sounddevice
+    sounddevice._ffi.dlclose(sounddevice._lib)
+    importlib.reload(sounddevice)
+
     filename = Path(filename)
+    incomplete_filename = filename.parent / f'{filename.stem}_incomplete'
+    complete_filename = filename.parent / f'{filename.stem}_complete'
 
     rng = np.random.RandomState()
-    if trial_cb is None:
-        def trial_cb(s, i, n):
-            print(f'{s}: {i}: {n}')
     if exclude_targets is None:
         exclude_targets = []
 
     sd = babyface.Babyface('earphones', 'XLR', use_osc=False)
-    cp = cpod.CPod()
     wav_files = load_stim_set(sd.fs)
+
+    sd.play_stereo(wav_files['wa'])
+    cp = cpod.CPod()
     syllables = sorted(list(wav_files.keys()))
 
     settings = {
@@ -71,15 +88,6 @@ async def nback(n_back, config, filename, exclude_targets=None, trial_cb=None):
     config.experiment_info.set_current_sequence(sequence)
 
     config.experiment_info.set_current_stim(sequence[0])
-    config.experiment_info.score_stim(sequence[0], True)
-    config.experiment_info.set_current_stim(sequence[1])
-    config.experiment_info.score_stim(sequence[1], False)
-    config.experiment_info.set_current_stim(sequence[2])
-    config.experiment_info.score_stim(sequence[2], False)
-    config.experiment_info.set_current_stim(sequence[3])
-    config.experiment_info.score_stim(sequence[3], False)
-    config.experiment_info.set_current_stim(sequence[4])
-
     results = []
     try:
         async with PSIController('ws://localhost:8765') as psi:
@@ -94,13 +102,18 @@ async def nback(n_back, config, filename, exclude_targets=None, trial_cb=None):
                 config.experiment_info.score_stim(stim, result['is_correct'])
                 result['iti'] = iti
                 results.append(result)
+        incomplete_filename.unlink()
     except Exception as exc:
         settings['error'] = str(exc)
-        filename = filename.parent / f'{filename.stem}_incomplete'
     finally:
+        if len(results) !=  len(sequence):
+            filename = incomplete_filename
+        else:
+            filename = complete_filename
         settings['results'] = results
         with filename.with_suffix('.json').open('w') as fh:
             json.dump(settings, fh, cls=BiosemiEncoder, indent=2)
+        config.experiment_info.mark_complete()
 
 
 available_experiments = {
@@ -114,6 +127,7 @@ class ExperimentInfo(Atom):
 
     current_sequence = List()
     current_stim = Value()
+    complete = Bool(False)
 
     def set_current_sequence(self, sequence):
         deferred_call(setattr, self, 'current_sequence', sequence)
@@ -124,20 +138,32 @@ class ExperimentInfo(Atom):
     def score_stim(self, stim, is_correct):
         deferred_call(setattr, stim, 'is_correct', is_correct)
 
+    def mark_complete(self):
+        self.set_current_stim(None)
+        deferred_call(setattr, self, 'complete', True)
+
 
 class ExperimentConfig(Atom):
 
     subject_id = Str()
-    n_targets = Int(2)
-    n_trials = Int(10)
+    n_targets = Int(1)
+    n_trials = Int(3)
     filename = Property()
     experiment = Enum(*list(available_experiments.keys()))
 
     current_runs = Dict()
     current_targets = Dict()
 
-    experiment_info = ExperimentInfo()
+    experiment_info = Typed(ExperimentInfo)
     thread = Value()
+
+    def _default_experiment_info(self):
+        # Subscribe to complete attribute so that we can ensure that the
+        # current runs for the subject are updated at completion of an
+        # experiment.
+        ei = ExperimentInfo()
+        ei.observe('complete', self._check_current_runs)
+        return ei
 
     @observe('subject_id')
     def _check_current_runs(self, event=None):
@@ -153,7 +179,9 @@ class ExperimentConfig(Atom):
                 run = filename.stem.rsplit('_', 2)[1]
                 run = int(run[3:])
                 runs.append(run)
-                targets.append(json.loads(filename.read_text())['target'])
+                config = json.loads(filename.read_text())
+                if 'target' in config:
+                    targets.append(config['target'])
             current_runs[i] = max(runs) + 1
             current_targets[i] = targets
 
@@ -166,6 +194,7 @@ class ExperimentConfig(Atom):
         if self.thread is not None and self.thread.is_alive():
             self.thread.stop()
 
+        self.experiment_info.complete = False
         cb = available_experiments[self.experiment]
         run = self.current_runs[self.experiment]
         base_filename = f'{self.subject_id}_N{self.experiment}_run{run}'
@@ -181,6 +210,7 @@ class ExperimentConfig(Atom):
         task = loop.create_task(coroutine)
         self.thread = Thread(target=asyncio.run, kwargs={'main': coroutine})
         self.thread.start()
+
 
 
 if __name__ == '__main__':
