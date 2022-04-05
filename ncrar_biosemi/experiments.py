@@ -102,7 +102,8 @@ async def nback(n_back, config, filename, exclude_targets=None):
                 config.experiment_info.score_stim(stim, result['is_correct'])
                 result['iti'] = iti
                 results.append(result)
-        incomplete_filename.unlink()
+        if incomplete_filename.exists():
+            incomplete_filename.unlink()
     except Exception as exc:
         settings['error'] = str(exc)
     finally:
