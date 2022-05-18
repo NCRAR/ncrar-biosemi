@@ -159,8 +159,8 @@ class ExperimentInfo(Atom):
 class ExperimentConfig(Atom):
 
     subject_id = Str()
-    n_targets = Int(1)
-    n_trials = Int(3)
+    n_targets = Int(20)
+    n_trials = Int(120)
     filename = Property()
     experiment = Enum(*list(available_experiments.keys()))
 
