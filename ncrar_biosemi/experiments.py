@@ -1,3 +1,6 @@
+import logging
+log = logging.getLogger(__name__)
+
 import asyncio
 from functools import partial
 import json
@@ -92,19 +95,28 @@ async def nback(n_back, config, filename, exclude_targets=None):
     try:
         async with PSIController('ws://localhost:8765') as psi:
             await psi.running()
+            # Now, sleep for 1 sec to ensure that we can capture baseline
+            # before first stim.
+            time.sleep(1)
             for stim in sequence:
                 config.experiment_info.set_current_stim(stim)
                 with cp.set_code(stim.encode()):
                     wav = wav_files[stim.stim]
                     sd.play_stereo(wav)
-                iti = np.random.uniform(1.5, 2.5)
-                result, = await psi.monitor(iti)
-                config.experiment_info.score_stim(stim, result['is_correct'])
-                result['iti'] = iti
+                    iti = np.random.uniform(1.5, 2.5)
+                    result = await psi.monitor(iti)
+                    if len(result) != 1:
+                        log.error('We failed to get the trigger for this stim')
+                        result = {}
+                    else:
+                        result = result[0]
+                        result['iti'] = iti
+                        config.experiment_info.score_stim(stim, result['is_correct'])
                 results.append(result)
         if incomplete_filename.exists():
             incomplete_filename.unlink()
     except Exception as exc:
+        raise
         settings['error'] = str(exc)
     finally:
         if len(results) !=  len(sequence):
