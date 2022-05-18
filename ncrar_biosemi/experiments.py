@@ -103,15 +103,15 @@ async def nback(n_back, config, filename, exclude_targets=None):
                 with cp.set_code(stim.encode()):
                     wav = wav_files[stim.stim]
                     sd.play_stereo(wav)
-                    iti = np.random.uniform(1.5, 2.5)
-                    result = await psi.monitor(iti)
-                    if len(result) != 1:
-                        log.error('We failed to get the trigger for this stim')
-                        result = {}
-                    else:
-                        result = result[0]
-                        result['iti'] = iti
-                        config.experiment_info.score_stim(stim, result['is_correct'])
+                iti = np.random.uniform(1.5, 2.5)
+                result = await psi.monitor(iti)
+                if len(result) != 1:
+                    log.error('We failed to get the trigger for this stim')
+                    result = {}
+                else:
+                    result = result[0]
+                    result['iti'] = iti
+                    config.experiment_info.score_stim(stim, result['is_correct'])
                 results.append(result)
         if incomplete_filename.exists():
             incomplete_filename.unlink()
