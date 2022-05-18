@@ -1,7 +1,8 @@
 import asyncio
 
+from enaml.application import Application
 from enaml.core.api import Looper
-from enaml.layout.api import grid
+from enaml.layout.api import grid, spacer
 from enaml.stdlib.fields import IntField
 from enaml.styling import StyleSheet, Style, Setter
 from enaml.widgets.api import (Container, Field, Form, GroupBox, HGroup, Label,
@@ -109,8 +110,14 @@ enamldef NBackLauncher(MainWindow):
                         Label:
                             text << ', '.join(config.current_targets[loop_item])
 
+            VGroup:
+                padding = 0
+                spacing = 0
+
                 HGroup:
+                    padding = 0
                     enabled << bool(config.subject_id)
+                    leading_spacer = spacer(0)
                     PushButton:
                         text = 'Practice run'
                         clicked ::
@@ -119,6 +126,19 @@ enamldef NBackLauncher(MainWindow):
                         text = 'Test run'
                         clicked ::
                             config.run(practice=False)
+
+                HGroup:
+                    padding = 0
+                    align_widths = False
+                    leading_spacer = spacer(0)
+
+                    Label:
+                        text << config.base_filename.name if config.base_filename else ''
+                    PushButton:
+                        text = 'Copy'
+                        clicked ::
+                            cb = Application.instance()._qapp.clipboard()
+                            cb.setText(str(config.base_filename.with_suffix('.bdf')))
 
         Container:
             layout_constraints => ():

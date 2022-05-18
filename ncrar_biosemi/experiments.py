@@ -168,6 +168,7 @@ class ExperimentConfig(Atom):
     current_targets = Dict()
 
     experiment_info = Typed(ExperimentInfo)
+    base_filename = Typed(Path)
     thread = Value()
 
     def _default_experiment_info(self):
@@ -203,27 +204,29 @@ class ExperimentConfig(Atom):
         self.current_targets = current_targets
         self.current_runs = current_runs
 
+    def get_base_filename(self, practice):
+        run = self.current_runs[self.experiment]
+        base_filename = f'{self.subject_id}_N{self.experiment}_run{run}'
+        if practice:
+            base_filename = f'{base_filename}_practice'
+        return data_path / base_filename
+
     def run(self, practice):
         if self.thread is not None and self.thread.is_alive():
             self.thread.stop()
 
         self.experiment_info.complete = False
+        self.base_filename = self.get_base_filename(practice)
         cb = available_experiments[self.experiment]
-        run = self.current_runs[self.experiment]
-        base_filename = f'{self.subject_id}_N{self.experiment}_run{run}'
-        if practice:
-            base_filename = f'{base_filename}_practice'
-        else:
-            base_filename = f'{base_filename}'
-        filename = data_path / base_filename
-        exclude = self.current_targets[self.experiment]
-
-        coroutine = cb(self, filename, exclude_targets=exclude)
+        coroutine = cb(
+            self,
+            self.base_filename,
+            exclude_targets=self.current_targets[self.experiment]
+        )
         loop = asyncio.get_event_loop()
         task = loop.create_task(coroutine)
         self.thread = Thread(target=asyncio.run, kwargs={'main': coroutine})
         self.thread.start()
-
 
 
 if __name__ == '__main__':
